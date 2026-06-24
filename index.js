@@ -31,10 +31,25 @@ async function run() {
     const propertiesCollection = database.collection('properties');
 
     // post api
-    app.post("/add-properties", async(req, res)=>{
+    app.post("/api/add-properties", async(req, res)=>{
         const property = req.body;
         const result = await propertiesCollection.insertOne(property);
         res.send(result);
+    })
+
+    // get api
+    app.get("/api/properties", async(req, res)=>{
+      const query = {};
+      if(req.query.ownerId){
+        query.ownerId = req.query.ownerId;
+      }
+      if(req.query.status){
+        query.status = req.query.status;
+      }
+    
+      const cursor = propertiesCollection.find(query);
+      const result = await cursor.toArray();
+      res.send(result)
     })
 
     // Send a ping to confirm a successful connection
