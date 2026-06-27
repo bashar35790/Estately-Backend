@@ -30,11 +30,18 @@ async function run() {
     const database = client.db('Estately');
     const propertiesCollection = database.collection('properties');
     const bookingsCollection = database.collection('bookings');
+    const reviewsCollection = database.collection('reviews');
 
     // post api
     app.post("/api/add-properties", async (req, res) => {
       const property = req.body;
       const result = await propertiesCollection.insertOne(property);
+      res.send(result);
+    })
+
+    app.post("/api/add-review", async (req, res) => {
+      const review = req.body;
+      const result = await reviewsCollection.insertOne(review);
       res.send(result);
     })
 
@@ -68,6 +75,19 @@ async function run() {
       const result = await propertiesCollection.findOne(query);
       res.send(result);
     })
+
+    app.get("/api/reviews", async (req, res) => {
+      const query = {};
+      if (req.query.propertyId) {
+        query.propertyId = req.query.propertyId;
+      }
+      const cursor = reviewsCollection.find(query);
+      const result = await cursor.toArray();
+      res.send(result)
+    })
+
+
+
 
     // POST /api/bookings
     app.post("/api/bookings", async (req, res) => {
