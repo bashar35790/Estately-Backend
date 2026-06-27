@@ -29,6 +29,7 @@ async function run() {
 
     const database = client.db('Estately');
     const propertiesCollection = database.collection('properties');
+    const bookingsCollection = database.collection('bookings');
 
     // post api
     app.post("/api/add-properties", async (req, res) => {
@@ -67,6 +68,57 @@ async function run() {
       const result = await propertiesCollection.findOne(query);
       res.send(result);
     })
+
+    // POST /api/bookings
+    app.post("/api/bookings", async (req, res) => {
+      try {
+        const {
+          propertyId,
+          tenantId,
+          ownerId,
+          moveInDate,
+          contactNumber,
+          notes,
+          amount,
+          bookingStatus,
+          paymentStatus,
+          transactionId,
+        } = req.body;
+
+        const booking = {
+          propertyId,
+          tenantId,
+          ownerId,
+          moveInDate,
+          contactNumber,
+          notes: notes || "",
+          amount,
+          bookingStatus: bookingStatus || "pending",
+          paymentStatus: paymentStatus || "paid",
+          transactionId: transactionId || "",
+          createdAt: new Date().toISOString(),
+        };
+
+        const result = await bookingsCollection.insertOne(booking);
+        res.status(201).send(result);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to create booking", error: err.message });
+      }
+    });
+
+    // GET /api/bookings (for tenant or owner)
+    app.get("/api/bookings", async (req, res) => {
+      try {
+        const query = {};
+        if (req.query.tenantId) query.tenantId = req.query.tenantId;
+        if (req.query.ownerId) query.ownerId = req.query.ownerId;
+        if (req.query.propertyId) query.propertyId = req.query.propertyId;
+        const result = await bookingsCollection.find(query).toArray();
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to fetch bookings", error: err.message });
+      }
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
