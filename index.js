@@ -48,23 +48,38 @@ async function run() {
     // get api
 
     app.get("/api/properties", async (req, res) => {
-      const cursor = propertiesCollection.find();
-      const result = await cursor.toArray();
-      res.send(result);
-    });
+      try {
+        const query = {};
+        
+        // Exact match filters
+        if (req.query.ownerId) query.ownerId = req.query.ownerId;
+        if (req.query.status) query.status = req.query.status;
+        if (req.query.propertyType) query.propertyType = req.query.propertyType;
+        
+        // Search by location (case-insensitive regex)
+        if (req.query.location) {
+          query.location = { $regex: req.query.location, $options: "i" };
+        }
 
-    app.get("/api/properties", async (req, res) => {
-      const query = {};
-      if (req.query.ownerId) {
-        query.ownerId = req.query.ownerId;
-      }
-      if (req.query.status) {
-        query.status = req.query.status;
-      }
+        // Price range filtering
+        if (req.query.minPrice || req.query.maxPrice) {
+          query.price = {};
+          if (req.query.minPrice) query.price.$gte = Number(req.query.minPrice);
+          if (req.query.maxPrice) query.price.$lte = Number(req.query.maxPrice);
+        }
 
-      const cursor = propertiesCollection.find(query);
-      const result = await cursor.toArray();
-      res.send(result);
+        let cursor = propertiesCollection.find(query);
+
+        // Apply limit if provided
+        if (req.query.limit) {
+          cursor = cursor.limit(Number(req.query.limit));
+        }
+
+        const result = await cursor.toArray();
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to fetch properties", error: err.message });
+      }
     });
 
     app.get("/api/properties/:id", async (req, res) => {
