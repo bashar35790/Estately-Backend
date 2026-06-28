@@ -105,6 +105,14 @@ async function run() {
           transactionId,
         } = req.body;
 
+        // Prevent duplicate bookings if a transaction ID is provided
+        if (transactionId) {
+          const existingBooking = await bookingsCollection.findOne({ transactionId });
+          if (existingBooking) {
+            return res.status(409).send({ message: "Booking for this transaction already exists" });
+          }
+        }
+
         const booking = {
           propertyId,
           tenantId,
