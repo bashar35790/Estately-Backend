@@ -148,6 +148,92 @@ async function run() {
       }
     });
 
+    const favoritesCollection = database.collection('favorites');
+
+    // POST /api/favorites
+    app.post("/api/favorites", async (req, res) => {
+      try {
+        const { propertyId, userId } = req.body;
+        if (!propertyId || !userId) {
+          return res.status(400).send({ message: "propertyId and userId are required" });
+        }
+
+        const existing = await favoritesCollection.findOne({ propertyId, userId });
+        if (existing) {
+          return res.status(409).send({ message: "Property already in favorites" });
+        }
+
+        const favorite = {
+          propertyId,
+          userId,
+          createdAt: new Date().toISOString()
+        };
+
+        const result = await favoritesCollection.insertOne(favorite);
+        res.status(201).send(result);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to add favorite", error: err.message });
+      }
+    });
+
+    // DELETE /api/favorites/:propertyId
+    app.delete("/api/favorites/:propertyId", async (req, res) => {
+      try {
+        const propertyId = req.params.propertyId;
+        const userId = req.query.userId;
+        
+        if (!propertyId || !userId) {
+          return res.status(400).send({ message: "propertyId and userId are required" });
+        }
+
+        const result = await favoritesCollection.deleteOne({ propertyId, userId });
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ message: "Favorite not found" });
+        }
+        res.send({ message: "Favorite removed successfully" });
+      } catch (err) {
+        res.status(500).send({ message: "Failed to remove favorite", error: err.message });
+      }
+    });
+
+    // GET /api/favorites/check/:propertyId
+    app.get("/api/favorites/check/:propertyId", async (req, res) => {
+      try {
+        const propertyId = req.params.propertyId;
+        const userId = req.query.userId;
+        
+        if (!propertyId || !userId) {
+          return res.status(400).send({ message: "propertyId and userId are required" });
+        }
+
+        const existing = await favoritesCollection.findOne({ propertyId, userId });
+        res.send({ isFavorite: !!existing });
+      } catch (err) {
+        res.status(500).send({ message: "Failed to check favorite status", error: err.message });
+      }
+    });
+
+    // GET /api/favorites
+    app.get("/api/favorites", async (req, res) => {
+      try {
+        const userId = req.query.userId;
+        if (!userId) {
+          return res.status(400).send({ message: "userId is required" });
+        }
+
+        // Fetch favorites
+        const favorites = await favoritesCollection.find({ userId }).toArray();
+        
+        // Fetch property details for each favorite
+        const propertyIds = favorites.map(fav => new ObjectId(fav.propertyId));
+        const properties = await propertiesCollection.find({ _id: { $in: propertyIds } }).toArray();
+        
+        res.send(properties);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to fetch favorites", error: err.message });
+      }
+    });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
