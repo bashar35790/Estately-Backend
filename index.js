@@ -54,7 +54,9 @@ async function run() {
         // Exact match filters
         if (req.query.ownerId) query.ownerId = req.query.ownerId;
         if (req.query.status) query.status = req.query.status;
-        if (req.query.propertyType) query.propertyType = req.query.propertyType;
+        if (req.query.propertyType) {
+          query.propertyType = { $regex: new RegExp(`^${req.query.propertyType}$`, 'i') };
+        }
         
         // Search by location (case-insensitive regex)
         if (req.query.location) {
