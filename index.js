@@ -284,6 +284,128 @@ async function run() {
       }
     });
 
+    // DELETE /api/properties/:id
+    app.delete("/api/properties/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const result = await propertiesCollection.deleteOne({ _id: new ObjectId(id) });
+        if (result.deletedCount === 0) {
+          return res.status(404).send({ message: "Property not found" });
+        }
+        res.send({ message: "Property deleted successfully" });
+      } catch (err) {
+        res.status(500).send({ message: "Failed to delete property", error: err.message });
+      }
+    });
+
+    // PATCH /api/bookings/:id/status
+    app.patch("/api/bookings/:id/status", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { status } = req.body;
+        if (!status) {
+          return res.status(400).send({ message: "status is required" });
+        }
+        const result = await bookingsCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { bookingStatus: status } }
+        );
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to update booking status", error: err.message });
+      }
+    });
+
+    // PATCH /api/properties/:id/status
+    app.patch("/api/properties/:id/status", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { status } = req.body;
+        if (!status) {
+          return res.status(400).send({ message: "status is required" });
+        }
+        const result = await propertiesCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: { status } }
+        );
+        if (result.matchedCount === 0) {
+          return res.status(404).send({ message: "Property not found" });
+        }
+        res.send({ message: "Property status updated", status });
+      } catch (err) {
+        res.status(500).send({ message: "Failed to update property status", error: err.message });
+      }
+    });
+
+    // GET /api/owner-stats
+    app.get("/api/owner-stats", async (req, res) => {
+      try {
+        const ownerId = req.query.ownerId;
+        if (!ownerId) {
+          return res.status(400).send({ message: "ownerId is required" });
+        }
+
+        // 1. Total Properties
+        const totalProperties = await propertiesCollection.countDocuments({ ownerId });
+
+        // 2. Fetch all bookings for the owner
+        const bookings = await bookingsCollection.find({ ownerId }).toArray();
+
+        // 3. Total Bookings (Confirmed)
+        // Assuming "confirmed" bookings or "paid" paymentStatus
+        const totalBookings = bookings.filter(
+          (b) => b.bookingStatus === "confirmed" || b.paymentStatus === "paid" || b.bookingStatus === "approved"
+        ).length;
+
+        // 4. Total Earnings
+        let totalEarnings = 0;
+        const paidBookings = bookings.filter((b) => b.paymentStatus === "paid");
+        paidBookings.forEach((b) => {
+          totalEarnings += Number(b.amount) || 0;
+        });
+
+        // 5. Monthly Earnings Chart Data for the last 12 months
+        const monthlyEarningsMap = {};
+        const now = new Date();
+        
+        // Initialize last 12 months with 0
+        for (let i = 11; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          const monthName = d.toLocaleString('default', { month: 'short' });
+          monthlyEarningsMap[monthName] = 0;
+        }
+
+        paidBookings.forEach((b) => {
+          if (b.createdAt) {
+            const bDate = new Date(b.createdAt);
+            // Check if within last 12 months
+            const diffTime = Math.abs(now - bDate);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            if (diffDays <= 365) {
+               const mName = bDate.toLocaleString('default', { month: 'short' });
+               if (monthlyEarningsMap[mName] !== undefined) {
+                 monthlyEarningsMap[mName] += Number(b.amount) || 0;
+               }
+            }
+          }
+        });
+
+        const monthlyEarnings = Object.keys(monthlyEarningsMap).map(key => ({
+          name: key,
+          total: monthlyEarningsMap[key]
+        }));
+
+        res.send({
+          totalEarnings,
+          totalProperties,
+          totalBookings,
+          monthlyEarnings
+        });
+      } catch (err) {
+        res.status(500).send({ message: "Failed to fetch owner stats", error: err.message });
+      }
+    });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
