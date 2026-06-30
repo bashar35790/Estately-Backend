@@ -1,12 +1,21 @@
+const dns = require("node:dns");
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
+
 const express = require("express");
 const cors = require("cors");
 const app = express();
-require("dotenv").config();
+const dotenv = require("dotenv");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
+dotenv.config();
 //middleware
 app.use(express.json());
 app.use(cors());
+
+app.use(cors({ origin: process.env.BETTER_AUTH_URL, credentials: true }));
+
+const BETTER_AUTH_URL = process.env.BETTER_AUTH_URL || "http://localhost:3000";
+
 
 // env variables
 const port = process.env.PORT;
