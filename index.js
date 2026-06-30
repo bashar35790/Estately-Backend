@@ -31,6 +31,49 @@ async function run() {
     const bookingsCollection = database.collection("bookings");
     const reviewsCollection = database.collection("reviews");
     const favoritesCollection = database.collection("favorites");
+    const usersCollection = database.collection("user");
+
+    const enrichBookings = async (bookings) => {
+      const propertyIds = [
+        ...new Set(
+          bookings
+            .map((booking) => booking.propertyId)
+            .filter((id) => ObjectId.isValid(id)),
+        ),
+      ].map((id) => new ObjectId(id));
+
+      const userIds = [
+        ...new Set(
+          bookings.flatMap((booking) => [booking.tenantId, booking.ownerId]).filter(Boolean),
+        ),
+      ];
+
+      const [properties, users] = await Promise.all([
+        propertyIds.length
+          ? propertiesCollection.find({ _id: { $in: propertyIds } }).toArray()
+          : [],
+        userIds.length ? usersCollection.find({ id: { $in: userIds } }).toArray() : [],
+      ]);
+
+      const propertyMap = new Map(properties.map((property) => [property._id.toString(), property]));
+      const userMap = new Map(users.map((user) => [user.id, user]));
+
+      return bookings.map((booking) => {
+        const property = propertyMap.get(booking.propertyId);
+        const tenant = userMap.get(booking.tenantId);
+        const owner = userMap.get(booking.ownerId);
+
+        return {
+          ...booking,
+          propertyTitle: property?.title || "",
+          propertyName: property?.title || "",
+          tenantName: tenant?.name || "",
+          tenantEmail: tenant?.email || "",
+          ownerName: owner?.name || property?.ownerName || "",
+          ownerEmail: owner?.email || property?.ownerEmail || "",
+        };
+      });
+    };
 
     // post api
     app.post("/api/add-properties", async (req, res) => {
@@ -161,7 +204,13 @@ async function run() {
         if (req.query.tenantId) query.tenantId = req.query.tenantId;
         if (req.query.ownerId) query.ownerId = req.query.ownerId;
         if (req.query.propertyId) query.propertyId = req.query.propertyId;
-        const result = await bookingsCollection.find(query).toArray();
+        const result = await bookingsCollection.find(query).sort({ createdAt: -1 }).toArray();
+
+        if (req.query.includeDetails === "true") {
+          const enriched = await enrichBookings(result);
+          return res.send(enriched);
+        }
+
         res.send(result);
       } catch (err) {
         res
@@ -320,20 +369,206 @@ async function run() {
     app.patch("/api/properties/:id/status", async (req, res) => {
       try {
         const id = req.params.id;
-        const { status } = req.body;
+        const { status, rejectionFeedback = "" } = req.body;
         if (!status) {
           return res.status(400).send({ message: "status is required" });
         }
+        const update = {
+          status,
+          rejectionFeedback: status === "rejected" ? rejectionFeedback : "",
+        };
         const result = await propertiesCollection.updateOne(
           { _id: new ObjectId(id) },
-          { $set: { status } }
+          { $set: update }
         );
         if (result.matchedCount === 0) {
           return res.status(404).send({ message: "Property not found" });
         }
-        res.send({ message: "Property status updated", status });
+        res.send({ message: "Property status updated", status, rejectionFeedback: update.rejectionFeedback });
       } catch (err) {
         res.status(500).send({ message: "Failed to update property status", error: err.message });
+      }
+    });
+
+    app.get("/api/admin/stats", async (req, res) => {
+      try {
+        const [totalUsers, totalProperties, totalBookings, pendingProperties, confirmedBookings] =
+          await Promise.all([
+            usersCollection.countDocuments(),
+            propertiesCollection.countDocuments(),
+            bookingsCollection.countDocuments(),
+            propertiesCollection.countDocuments({ status: "pending" }),
+            bookingsCollection.countDocuments({ bookingStatus: { $in: ["confirmed", "approved"] } }),
+          ]);
+
+        const paidBookings = await bookingsCollection.find({ paymentStatus: "paid" }).toArray();
+        const totalRevenue = paidBookings.reduce((sum, booking) => sum + (Number(booking.amount) || 0), 0);
+
+        res.send({
+          totalUsers,
+          totalProperties,
+          totalBookings,
+          pendingProperties,
+          confirmedBookings,
+          totalRevenue,
+        });
+      } catch (err) {
+        res.status(500).send({ message: "Failed to fetch admin stats", error: err.message });
+      }
+    });
+
+    app.get("/api/admin/users", async (req, res) => {
+      try {
+        const users = await usersCollection.find({}).sort({ createdAt: -1 }).toArray();
+        res.send(users);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to fetch users", error: err.message });
+      }
+    });
+
+    app.patch("/api/admin/users/:id/role", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const { userRole } = req.body;
+
+        if (!userRole) {
+          return res.status(400).send({ message: "userRole is required" });
+        }
+
+        const result = await usersCollection.updateOne({ id }, { $set: { userRole } });
+        if (result.matchedCount === 0) {
+          return res.status(404).send({ message: "User not found" });
+        }
+
+        res.send({ message: "User role updated", userRole });
+      } catch (err) {
+        res.status(500).send({ message: "Failed to update user role", error: err.message });
+      }
+    });
+
+    app.get("/api/admin/properties", async (req, res) => {
+      try {
+        const query = {};
+        if (req.query.status) {
+          query.status = req.query.status;
+        }
+
+        const properties = await propertiesCollection.find(query).sort({ _id: -1 }).toArray();
+        res.send(properties);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to fetch admin properties", error: err.message });
+      }
+    });
+
+    app.patch("/api/admin/properties/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const allowedFields = [
+          "title",
+          "location",
+          "propertyType",
+          "price",
+          "rentType",
+          "status",
+          "bedrooms",
+          "bathrooms",
+          "size",
+          "isFeatured",
+          "rejectionFeedback",
+        ];
+
+        const update = {};
+        for (const field of allowedFields) {
+          if (req.body[field] !== undefined) {
+            update[field] = req.body[field];
+          }
+        }
+
+        if (Object.keys(update).length === 0) {
+          return res.status(400).send({ message: "No valid fields to update" });
+        }
+
+        if (update.status && update.status !== "rejected") {
+          update.rejectionFeedback = "";
+        }
+
+        const result = await propertiesCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $set: update },
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send({ message: "Property not found" });
+        }
+
+        res.send({ message: "Property updated successfully" });
+      } catch (err) {
+        res.status(500).send({ message: "Failed to update property", error: err.message });
+      }
+    });
+
+    app.get("/api/admin/bookings", async (req, res) => {
+      try {
+        const bookings = await bookingsCollection.find({}).sort({ createdAt: -1 }).toArray();
+        const enriched = await enrichBookings(bookings);
+        res.send(enriched);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to fetch admin bookings", error: err.message });
+      }
+    });
+
+    app.get("/api/admin/transactions", async (req, res) => {
+      try {
+        const bookings = await bookingsCollection
+          .find({ transactionId: { $ne: "" }, paymentStatus: "paid" })
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        const enriched = await enrichBookings(bookings);
+        const transactions = enriched.map((booking) => ({
+          _id: booking._id,
+          transactionId: booking.transactionId,
+          propertyName: booking.propertyTitle || "",
+          tenantName: booking.tenantName || "",
+          ownerName: booking.ownerName || "",
+          amount: Number(booking.amount) || 0,
+          date: booking.createdAt,
+        }));
+
+        res.send(transactions);
+      } catch (err) {
+        res.status(500).send({ message: "Failed to fetch transactions", error: err.message });
+      }
+    });
+
+    app.get("/api/tenant-stats", async (req, res) => {
+      try {
+        const tenantId = req.query.tenantId;
+        if (!tenantId) {
+          return res.status(400).send({ message: "tenantId is required" });
+        }
+
+        const [bookings, favoritesCount] = await Promise.all([
+          bookingsCollection.find({ tenantId }).toArray(),
+          favoritesCollection.countDocuments({ userId: tenantId }),
+        ]);
+
+        const totalBookings = bookings.length;
+        const activeBookings = bookings.filter((booking) =>
+          ["confirmed", "approved", "pending"].includes(booking.bookingStatus),
+        ).length;
+        const totalPaid = bookings
+          .filter((booking) => booking.paymentStatus === "paid")
+          .reduce((sum, booking) => sum + (Number(booking.amount) || 0), 0);
+
+        res.send({
+          totalBookings,
+          activeBookings,
+          favoriteProperties: favoritesCount,
+          totalPaid,
+        });
+      } catch (err) {
+        res.status(500).send({ message: "Failed to fetch tenant stats", error: err.message });
       }
     });
 
