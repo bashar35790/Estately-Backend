@@ -145,10 +145,19 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/api/all-reviews", async (req, res)=>{
-      const result = await reviewsCollection.find({}).toArray();
-      res.send(result);
-    })
+ app.get("/api/all-reviews", async (req, res) => {
+  try {
+    const result = await reviewsCollection
+      .find({})
+      .sort({ createdAt: -1 }) // Newest first
+      .limit(6)
+      .toArray();
+
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({ message: "Failed to fetch reviews" });
+  }
+});
 
     app.get("/api/reviews", async (req, res) => {
       const query = {};
