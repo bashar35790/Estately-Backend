@@ -8,7 +8,7 @@ The Estately backend provides RESTful API endpoints to support the frontend appl
 
 ## Live URL
 
-[https://estately-api.vercel.app](https://estately-api.vercel.app) 
+[https://estately-backend.vercel.app](https://estately-api.vercel.app) 
 
 ## Key Features
 
