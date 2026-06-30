@@ -145,6 +145,11 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/api/all-reviews", async (req, res)=>{
+      const result = await reviewsCollection.find({}).toArray();
+      res.send(result);
+    })
+
     app.get("/api/reviews", async (req, res) => {
       const query = {};
       if (req.query.propertyId) {
