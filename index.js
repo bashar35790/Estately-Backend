@@ -12,6 +12,8 @@ dotenv.config();
 app.use(express.json());
 app.use(cors());
 
+const nodemailer = require("nodemailer");
+
 app.use(cors({ origin: process.env.BETTER_AUTH_URL, credentials: true }));
 
 const BETTER_AUTH_URL = process.env.BETTER_AUTH_URL || "http://localhost:3000";
@@ -85,6 +87,11 @@ async function run() {
     };
 
     // post api
+    app.post("/api/send-email", async (req, res) => {
+       const { email, name } = req.query;
+       console.log(`Sending email to ${email} for user ${name}`);
+    });
+
     app.post("/api/add-properties", async (req, res) => {
       const property = req.body;
       const result = await propertiesCollection.insertOne(property);
@@ -102,14 +109,14 @@ async function run() {
     app.get("/api/properties", async (req, res) => {
       try {
         const query = {};
-        
+
         // Exact match filters
         if (req.query.ownerId) query.ownerId = req.query.ownerId;
         if (req.query.status) query.status = req.query.status;
         if (req.query.propertyType) {
           query.propertyType = { $regex: new RegExp(`^${req.query.propertyType}$`, 'i') };
         }
-        
+
         // Search by location (case-insensitive regex)
         if (req.query.location) {
           query.location = { $regex: req.query.location, $options: "i" };
@@ -145,19 +152,19 @@ async function run() {
       res.send(result);
     });
 
- app.get("/api/all-reviews", async (req, res) => {
-  try {
-    const result = await reviewsCollection
-      .find({})
-      .sort({ createdAt: -1 }) // Newest first
-      .limit(6)
-      .toArray();
+    app.get("/api/all-reviews", async (req, res) => {
+      try {
+        const result = await reviewsCollection
+          .find({})
+          .sort({ createdAt: -1 }) // Newest first
+          .limit(6)
+          .toArray();
 
-    res.send(result);
-  } catch (error) {
-    res.status(500).send({ message: "Failed to fetch reviews" });
-  }
-});
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Failed to fetch reviews" });
+      }
+    });
 
     app.get("/api/reviews", async (req, res) => {
       const query = {};
@@ -625,7 +632,7 @@ async function run() {
         // 5. Monthly Earnings Chart Data for the last 12 months
         const monthlyEarningsMap = {};
         const now = new Date();
-        
+
         // Initialize last 12 months with 0
         for (let i = 11; i >= 0; i--) {
           const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -640,10 +647,10 @@ async function run() {
             const diffTime = Math.abs(now - bDate);
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             if (diffDays <= 365) {
-               const mName = bDate.toLocaleString('default', { month: 'short' });
-               if (monthlyEarningsMap[mName] !== undefined) {
-                 monthlyEarningsMap[mName] += Number(b.amount) || 0;
-               }
+              const mName = bDate.toLocaleString('default', { month: 'short' });
+              if (monthlyEarningsMap[mName] !== undefined) {
+                monthlyEarningsMap[mName] += Number(b.amount) || 0;
+              }
             }
           }
         });
