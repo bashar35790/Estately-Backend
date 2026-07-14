@@ -146,7 +146,7 @@ async function run() {
     app.get("/api/properties/:id", async (req: Request, res: Response) => {
       const id = req.params.id;
       const query = {
-        _id: new ObjectId(id),
+        _id: new ObjectId(id as string),
       };
       const result = await propertiesCollection.findOne(query);
       res.send(result);
@@ -365,7 +365,7 @@ async function run() {
     app.delete("/api/properties/:id", async (req: Request, res: Response): Promise<void> => {
       try {
         const id = req.params.id;
-        const result = await propertiesCollection.deleteOne({ _id: new ObjectId(id) });
+        const result = await propertiesCollection.deleteOne({ _id: new ObjectId(id as string) });
         if (result.deletedCount === 0) {
           res.status(404).send({ message: "Property not found" });
           return;
@@ -386,7 +386,7 @@ async function run() {
           return;
         }
         const result = await bookingsCollection.updateOne(
-          { _id: new ObjectId(id) },
+          { _id: new ObjectId(id as string) },
           { $set: { bookingStatus: status } }
         );
         res.send(result);
@@ -409,7 +409,7 @@ async function run() {
           rejectionFeedback: status === "rejected" ? rejectionFeedback : "",
         };
         const result = await propertiesCollection.updateOne(
-          { _id: new ObjectId(id) },
+          { _id: new ObjectId(id as string) },
           { $set: update }
         );
         if (result.matchedCount === 0) {
@@ -528,7 +528,7 @@ async function run() {
         }
 
         const result = await propertiesCollection.updateOne(
-          { _id: new ObjectId(id) },
+          { _id: new ObjectId(id as string) },
           { $set: update },
         );
 
