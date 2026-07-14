@@ -1,27 +1,27 @@
-const dns = require("node:dns");
+import dns from "node:dns";
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
-const express = require("express");
-const cors = require("cors");
+import express, { Request, Response } from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+import { MongoClient, ServerApiVersion, ObjectId } from "mongodb";
+import nodemailer from "nodemailer";
+
 const app = express();
-const dotenv = require("dotenv");
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 dotenv.config();
-//middleware
+
+// middleware
 app.use(express.json());
 app.use(cors());
-
-const nodemailer = require("nodemailer");
 
 app.use(cors({ origin: process.env.BETTER_AUTH_URL, credentials: true }));
 
 const BETTER_AUTH_URL = process.env.BETTER_AUTH_URL || "http://localhost:3000";
 
-
 // env variables
-const port = process.env.PORT;
-const uri = process.env.MONGODB_URI;
+const port = process.env.PORT || 5000;
+const uri = process.env.MONGODB_URI as string;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
@@ -34,7 +34,7 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    // Connect the client to the server	(optional starting in v4.7)
+    // Connect the client to the server (optional starting in v4.7)
     await client.connect();
 
     const database = client.db("Estately");
@@ -44,7 +44,7 @@ async function run() {
     const favoritesCollection = database.collection("favorites");
     const usersCollection = database.collection("user");
 
-    const enrichBookings = async (bookings) => {
+    const enrichBookings = async (bookings: any[]) => {
       const propertyIds = [
         ...new Set(
           bookings
@@ -87,28 +87,28 @@ async function run() {
     };
 
     // post api
-    app.post("/api/send-email", async (req, res) => {
+    app.post("/api/send-email", async (req: Request, res: Response) => {
        const { email, name } = req.query;
        console.log(`Sending email to ${email} for user ${name}`);
+       res.send({ message: "Email logged" });
     });
 
-    app.post("/api/add-properties", async (req, res) => {
+    app.post("/api/add-properties", async (req: Request, res: Response) => {
       const property = req.body;
       const result = await propertiesCollection.insertOne(property);
       res.send(result);
     });
 
-    app.post("/api/add-review", async (req, res) => {
+    app.post("/api/add-review", async (req: Request, res: Response) => {
       const review = req.body;
       const result = await reviewsCollection.insertOne(review);
       res.send(result);
     });
 
     // get api
-
-    app.get("/api/properties", async (req, res) => {
+    app.get("/api/properties", async (req: Request, res: Response) => {
       try {
-        const query = {};
+        const query: any = {};
 
         // Exact match filters
         if (req.query.ownerId) query.ownerId = req.query.ownerId;
@@ -138,12 +138,12 @@ async function run() {
 
         const result = await cursor.toArray();
         res.send(result);
-      } catch (err) {
+      } catch (err: any) {
         res.status(500).send({ message: "Failed to fetch properties", error: err.message });
       }
     });
 
-    app.get("/api/properties/:id", async (req, res) => {
+    app.get("/api/properties/:id", async (req: Request, res: Response) => {
       const id = req.params.id;
       const query = {
         _id: new ObjectId(id),
@@ -152,7 +152,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/api/all-reviews", async (req, res) => {
+    app.get("/api/all-reviews", async (req: Request, res: Response) => {
       try {
         const result = await reviewsCollection
           .find({})
@@ -161,13 +161,13 @@ async function run() {
           .toArray();
 
         res.send(result);
-      } catch (error) {
+      } catch (error: any) {
         res.status(500).send({ message: "Failed to fetch reviews" });
       }
     });
 
-    app.get("/api/reviews", async (req, res) => {
-      const query = {};
+    app.get("/api/reviews", async (req: Request, res: Response) => {
+      const query: any = {};
       if (req.query.propertyId) {
         query.propertyId = req.query.propertyId;
       }
@@ -177,7 +177,7 @@ async function run() {
     });
 
     // POST /api/bookings
-    app.post("/api/bookings", async (req, res) => {
+    app.post("/api/bookings", async (req: Request, res: Response): Promise<void> => {
       try {
         const {
           propertyId,
@@ -198,9 +198,8 @@ async function run() {
             transactionId,
           });
           if (existingBooking) {
-            return res
-              .status(409)
-              .send({ message: "Booking for this transaction already exists" });
+            res.status(409).send({ message: "Booking for this transaction already exists" });
+            return;
           }
         }
 
@@ -220,7 +219,7 @@ async function run() {
 
         const result = await bookingsCollection.insertOne(booking);
         res.status(201).send(result);
-      } catch (err) {
+      } catch (err: any) {
         res
           .status(500)
           .send({ message: "Failed to create booking", error: err.message });
@@ -228,9 +227,9 @@ async function run() {
     });
 
     // GET /api/bookings (for tenant or owner)
-    app.get("/api/bookings", async (req, res) => {
+    app.get("/api/bookings", async (req: Request, res: Response): Promise<void> => {
       try {
-        const query = {};
+        const query: any = {};
         if (req.query.tenantId) query.tenantId = req.query.tenantId;
         if (req.query.ownerId) query.ownerId = req.query.ownerId;
         if (req.query.propertyId) query.propertyId = req.query.propertyId;
@@ -238,11 +237,12 @@ async function run() {
 
         if (req.query.includeDetails === "true") {
           const enriched = await enrichBookings(result);
-          return res.send(enriched);
+          res.send(enriched);
+          return;
         }
 
         res.send(result);
-      } catch (err) {
+      } catch (err: any) {
         res
           .status(500)
           .send({ message: "Failed to fetch bookings", error: err.message });
@@ -250,13 +250,12 @@ async function run() {
     });
 
     // POST /api/favorites
-    app.post("/api/favorites", async (req, res) => {
+    app.post("/api/favorites", async (req: Request, res: Response): Promise<void> => {
       try {
         const { propertyId, userId } = req.body;
         if (!propertyId || !userId) {
-          return res
-            .status(400)
-            .send({ message: "propertyId and userId are required" });
+          res.status(400).send({ message: "propertyId and userId are required" });
+          return;
         }
 
         const existing = await favoritesCollection.findOne({
@@ -264,9 +263,8 @@ async function run() {
           userId,
         });
         if (existing) {
-          return res
-            .status(409)
-            .send({ message: "Property already in favorites" });
+          res.status(409).send({ message: "Property already in favorites" });
+          return;
         }
 
         const favorite = {
@@ -277,7 +275,7 @@ async function run() {
 
         const result = await favoritesCollection.insertOne(favorite);
         res.status(201).send(result);
-      } catch (err) {
+      } catch (err: any) {
         res
           .status(500)
           .send({ message: "Failed to add favorite", error: err.message });
@@ -285,15 +283,14 @@ async function run() {
     });
 
     // DELETE /api/favorites/:propertyId
-    app.delete("/api/favorites/:propertyId", async (req, res) => {
+    app.delete("/api/favorites/:propertyId", async (req: Request, res: Response): Promise<void> => {
       try {
         const propertyId = req.params.propertyId;
         const userId = req.query.userId;
 
         if (!propertyId || !userId) {
-          return res
-            .status(400)
-            .send({ message: "propertyId and userId are required" });
+          res.status(400).send({ message: "propertyId and userId are required" });
+          return;
         }
 
         const result = await favoritesCollection.deleteOne({
@@ -301,10 +298,11 @@ async function run() {
           userId,
         });
         if (result.deletedCount === 0) {
-          return res.status(404).send({ message: "Favorite not found" });
+          res.status(404).send({ message: "Favorite not found" });
+          return;
         }
         res.send({ message: "Favorite removed successfully" });
-      } catch (err) {
+      } catch (err: any) {
         res
           .status(500)
           .send({ message: "Failed to remove favorite", error: err.message });
@@ -312,15 +310,14 @@ async function run() {
     });
 
     // GET /api/favorites/check/:propertyId
-    app.get("/api/favorites/check/:propertyId", async (req, res) => {
+    app.get("/api/favorites/check/:propertyId", async (req: Request, res: Response): Promise<void> => {
       try {
         const propertyId = req.params.propertyId;
         const userId = req.query.userId;
 
         if (!propertyId || !userId) {
-          return res
-            .status(400)
-            .send({ message: "propertyId and userId are required" });
+          res.status(400).send({ message: "propertyId and userId are required" });
+          return;
         }
 
         const existing = await favoritesCollection.findOne({
@@ -328,7 +325,7 @@ async function run() {
           userId,
         });
         res.send({ isFavorite: !!existing });
-      } catch (err) {
+      } catch (err: any) {
         res.status(500).send({
           message: "Failed to check favorite status",
           error: err.message,
@@ -337,11 +334,12 @@ async function run() {
     });
 
     // GET /api/favorites
-    app.get("/api/favorites", async (req, res) => {
+    app.get("/api/favorites", async (req: Request, res: Response): Promise<void> => {
       try {
         const userId = req.query.userId;
         if (!userId) {
-          return res.status(400).send({ message: "userId is required" });
+          res.status(400).send({ message: "userId is required" });
+          return;
         }
 
         // Fetch favorites
@@ -356,7 +354,7 @@ async function run() {
           .toArray();
 
         res.send(properties);
-      } catch (err) {
+      } catch (err: any) {
         res
           .status(500)
           .send({ message: "Failed to fetch favorites", error: err.message });
@@ -364,44 +362,47 @@ async function run() {
     });
 
     // DELETE /api/properties/:id
-    app.delete("/api/properties/:id", async (req, res) => {
+    app.delete("/api/properties/:id", async (req: Request, res: Response): Promise<void> => {
       try {
         const id = req.params.id;
         const result = await propertiesCollection.deleteOne({ _id: new ObjectId(id) });
         if (result.deletedCount === 0) {
-          return res.status(404).send({ message: "Property not found" });
+          res.status(404).send({ message: "Property not found" });
+          return;
         }
         res.send({ message: "Property deleted successfully" });
-      } catch (err) {
+      } catch (err: any) {
         res.status(500).send({ message: "Failed to delete property", error: err.message });
       }
     });
 
     // PATCH /api/bookings/:id/status
-    app.patch("/api/bookings/:id/status", async (req, res) => {
+    app.patch("/api/bookings/:id/status", async (req: Request, res: Response): Promise<void> => {
       try {
         const id = req.params.id;
         const { status } = req.body;
         if (!status) {
-          return res.status(400).send({ message: "status is required" });
+          res.status(400).send({ message: "status is required" });
+          return;
         }
         const result = await bookingsCollection.updateOne(
           { _id: new ObjectId(id) },
           { $set: { bookingStatus: status } }
         );
         res.send(result);
-      } catch (err) {
+      } catch (err: any) {
         res.status(500).send({ message: "Failed to update booking status", error: err.message });
       }
     });
 
     // PATCH /api/properties/:id/status
-    app.patch("/api/properties/:id/status", async (req, res) => {
+    app.patch("/api/properties/:id/status", async (req: Request, res: Response): Promise<void> => {
       try {
         const id = req.params.id;
         const { status, rejectionFeedback = "" } = req.body;
         if (!status) {
-          return res.status(400).send({ message: "status is required" });
+          res.status(400).send({ message: "status is required" });
+          return;
         }
         const update = {
           status,
@@ -412,15 +413,16 @@ async function run() {
           { $set: update }
         );
         if (result.matchedCount === 0) {
-          return res.status(404).send({ message: "Property not found" });
+          res.status(404).send({ message: "Property not found" });
+          return;
         }
         res.send({ message: "Property status updated", status, rejectionFeedback: update.rejectionFeedback });
-      } catch (err) {
+      } catch (err: any) {
         res.status(500).send({ message: "Failed to update property status", error: err.message });
       }
     });
 
-    app.get("/api/admin/stats", async (req, res) => {
+    app.get("/api/admin/stats", async (req: Request, res: Response) => {
       try {
         const [totalUsers, totalProperties, totalBookings, pendingProperties, confirmedBookings] =
           await Promise.all([
@@ -442,55 +444,57 @@ async function run() {
           confirmedBookings,
           totalRevenue,
         });
-      } catch (err) {
+      } catch (err: any) {
         res.status(500).send({ message: "Failed to fetch admin stats", error: err.message });
       }
     });
 
-    app.get("/api/admin/users", async (req, res) => {
+    app.get("/api/admin/users", async (req: Request, res: Response) => {
       try {
         const users = await usersCollection.find({}).sort({ createdAt: -1 }).toArray();
         res.send(users);
-      } catch (err) {
+      } catch (err: any) {
         res.status(500).send({ message: "Failed to fetch users", error: err.message });
       }
     });
 
-    app.patch("/api/admin/users/:id/role", async (req, res) => {
+    app.patch("/api/admin/users/:id/role", async (req: Request, res: Response): Promise<void> => {
       try {
         const id = req.params.id;
         const { userRole } = req.body;
 
         if (!userRole) {
-          return res.status(400).send({ message: "userRole is required" });
+          res.status(400).send({ message: "userRole is required" });
+          return;
         }
 
         const result = await usersCollection.updateOne({ id }, { $set: { userRole } });
         if (result.matchedCount === 0) {
-          return res.status(404).send({ message: "User not found" });
+          res.status(404).send({ message: "User not found" });
+          return;
         }
 
         res.send({ message: "User role updated", userRole });
-      } catch (err) {
+      } catch (err: any) {
         res.status(500).send({ message: "Failed to update user role", error: err.message });
       }
     });
 
-    app.get("/api/admin/properties", async (req, res) => {
+    app.get("/api/admin/properties", async (req: Request, res: Response) => {
       try {
-        const query = {};
+        const query: any = {};
         if (req.query.status) {
           query.status = req.query.status;
         }
 
         const properties = await propertiesCollection.find(query).sort({ _id: -1 }).toArray();
         res.send(properties);
-      } catch (err) {
+      } catch (err: any) {
         res.status(500).send({ message: "Failed to fetch admin properties", error: err.message });
       }
     });
 
-    app.patch("/api/admin/properties/:id", async (req, res) => {
+    app.patch("/api/admin/properties/:id", async (req: Request, res: Response): Promise<void> => {
       try {
         const id = req.params.id;
         const allowedFields = [
@@ -507,7 +511,7 @@ async function run() {
           "rejectionFeedback",
         ];
 
-        const update = {};
+        const update: any = {};
         for (const field of allowedFields) {
           if (req.body[field] !== undefined) {
             update[field] = req.body[field];
@@ -515,7 +519,8 @@ async function run() {
         }
 
         if (Object.keys(update).length === 0) {
-          return res.status(400).send({ message: "No valid fields to update" });
+          res.status(400).send({ message: "No valid fields to update" });
+          return;
         }
 
         if (update.status && update.status !== "rejected") {
@@ -528,26 +533,27 @@ async function run() {
         );
 
         if (result.matchedCount === 0) {
-          return res.status(404).send({ message: "Property not found" });
+          res.status(404).send({ message: "Property not found" });
+          return;
         }
 
         res.send({ message: "Property updated successfully" });
-      } catch (err) {
+      } catch (err: any) {
         res.status(500).send({ message: "Failed to update property", error: err.message });
       }
     });
 
-    app.get("/api/admin/bookings", async (req, res) => {
+    app.get("/api/admin/bookings", async (req: Request, res: Response) => {
       try {
         const bookings = await bookingsCollection.find({}).sort({ createdAt: -1 }).toArray();
         const enriched = await enrichBookings(bookings);
         res.send(enriched);
-      } catch (err) {
+      } catch (err: any) {
         res.status(500).send({ message: "Failed to fetch admin bookings", error: err.message });
       }
     });
 
-    app.get("/api/admin/transactions", async (req, res) => {
+    app.get("/api/admin/transactions", async (req: Request, res: Response) => {
       try {
         const bookings = await bookingsCollection
           .find({ transactionId: { $ne: "" }, paymentStatus: "paid" })
@@ -566,16 +572,17 @@ async function run() {
         }));
 
         res.send(transactions);
-      } catch (err) {
+      } catch (err: any) {
         res.status(500).send({ message: "Failed to fetch transactions", error: err.message });
       }
     });
 
-    app.get("/api/tenant-stats", async (req, res) => {
+    app.get("/api/tenant-stats", async (req: Request, res: Response): Promise<void> => {
       try {
         const tenantId = req.query.tenantId;
         if (!tenantId) {
-          return res.status(400).send({ message: "tenantId is required" });
+          res.status(400).send({ message: "tenantId is required" });
+          return;
         }
 
         const [bookings, favoritesCount] = await Promise.all([
@@ -597,17 +604,18 @@ async function run() {
           favoriteProperties: favoritesCount,
           totalPaid,
         });
-      } catch (err) {
+      } catch (err: any) {
         res.status(500).send({ message: "Failed to fetch tenant stats", error: err.message });
       }
     });
 
     // GET /api/owner-stats
-    app.get("/api/owner-stats", async (req, res) => {
+    app.get("/api/owner-stats", async (req: Request, res: Response): Promise<void> => {
       try {
         const ownerId = req.query.ownerId;
         if (!ownerId) {
-          return res.status(400).send({ message: "ownerId is required" });
+          res.status(400).send({ message: "ownerId is required" });
+          return;
         }
 
         // 1. Total Properties
@@ -630,7 +638,7 @@ async function run() {
         });
 
         // 5. Monthly Earnings Chart Data for the last 12 months
-        const monthlyEarningsMap = {};
+        const monthlyEarningsMap: Record<string, number> = {};
         const now = new Date();
 
         // Initialize last 12 months with 0
@@ -644,7 +652,7 @@ async function run() {
           if (b.createdAt) {
             const bDate = new Date(b.createdAt);
             // Check if within last 12 months
-            const diffTime = Math.abs(now - bDate);
+            const diffTime = Math.abs(now.getTime() - bDate.getTime());
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             if (diffDays <= 365) {
               const mName = bDate.toLocaleString('default', { month: 'short' });
@@ -666,16 +674,11 @@ async function run() {
           totalBookings,
           monthlyEarnings
         });
-      } catch (err) {
+      } catch (err: any) {
         res.status(500).send({ message: "Failed to fetch owner stats", error: err.message });
       }
     });
 
-    // Send a ping to confirm a successful connection
-    // await client.db("admin").command({ ping: 1 });
-    // console.log(
-    //   "Pinged your deployment. You successfully connected to MongoDB!",
-    // );
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
@@ -683,7 +686,7 @@ async function run() {
 }
 run().catch(console.dir);
 
-app.get("/", (req, res) => {
+app.get("/", (req: Request, res: Response) => {
   res.send("server is running");
 });
 
@@ -693,4 +696,4 @@ if (!process.env.VERCEL) {
   });
 }
 
-module.exports = app;
+export default app;
